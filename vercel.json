@@ -1,0 +1,16 @@
+{
+  "buildCommand": "cd apps/web && pnpm install && pnpm build",
+  "outputDirectory": "apps/web/.next",
+  "installCommand": "pnpm install",
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/cotisation-reminder",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/coach-analysis",
+      "schedule": "*/30 * * * *"
+    }
+  ]
+}
