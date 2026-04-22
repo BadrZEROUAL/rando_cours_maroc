@@ -1,0 +1,49 @@
+# Environment — JAMAIS committer les clés
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+.turbo/
+out/
+build/
+coverage/
+
+# Prisma
+packages/db/node_modules/.prisma/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Docker volumes
+.docker-volumes/
+
+# AWS
+.aws-sam/
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/
+infra/aws/terraform.tfvars
+infra/aws/.terraform.lock.hcl
+
+# Certificates (generated at runtime)
+*.pem
+*.key
+*.crt

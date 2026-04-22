@@ -1,0 +1,31 @@
+{
+  "name": "randocours-maroc",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:e2e": "playwright test",
+    "lint": "turbo run lint",
+    "db:generate": "turbo run db:generate",
+    "db:migrate": "turbo run db:migrate",
+    "db:migrate:prod": "cd packages/db && pnpm prisma migrate deploy",
+    "db:studio": "cd packages/db && pnpm prisma studio",
+    "db:seed": "cd packages/db && pnpm ts-node prisma/seed.ts",
+    "db:reset": "cd packages/db && pnpm prisma migrate reset --force",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.5",
+    "@types/node": "^20.14.0",
+    "prettier": "^3.3.0",
+    "eslint": "^8.57.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@9.1.0"
+}

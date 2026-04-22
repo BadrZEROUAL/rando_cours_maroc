@@ -1,0 +1,68 @@
+# ── Stage 1 : Build ──────────────────────────────────────────
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Installer pnpm
+RUN npm install -g pnpm@9.1.0
+
+# Copier les manifestes
+COPY package.json pnpm-workspace.yaml turbo.json ./
+COPY packages/db/package.json ./packages/db/
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/api/package.json ./apps/api/
+
+# Installer les dépendances
+RUN pnpm install --frozen-lockfile
+
+# Copier le code source
+COPY packages/ ./packages/
+COPY apps/api/ ./apps/api/
+COPY tsconfig.json ./
+
+# Générer le client Prisma
+RUN pnpm db:generate
+
+# Build l'API
+RUN pnpm --filter @randocours/api build
+
+# ── Stage 2 : Runner ──────────────────────────────────────────
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+# Sécurité : utilisateur non-root
+RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+
+# Installer pnpm pour production
+RUN npm install -g pnpm@9.1.0
+
+# Copier uniquement ce qui est nécessaire en production
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/pnpm-workspace.yaml ./
+COPY --from=builder /app/packages/db/package.json ./packages/db/
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/
+COPY --from=builder /app/apps/api/package.json ./apps/api/
+
+# Installer seulement les dépendances de production
+RUN pnpm install --prod --frozen-lockfile
+
+# Copier les artefacts buildés
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/packages/db/node_modules/.prisma ./packages/db/node_modules/.prisma
+COPY --from=builder /app/packages/db/prisma/schema.prisma ./packages/db/prisma/
+
+# Passer à l'utilisateur non-root
+USER nodejs
+
+# Variables d'environnement par défaut
+ENV NODE_ENV=production
+ENV PORT=3001
+
+EXPOSE 3001
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3001/health || exit 1
+
+CMD ["node", "apps/api/dist/app.js"]
