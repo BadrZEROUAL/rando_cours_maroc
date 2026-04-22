@@ -152,6 +152,9 @@ export async function getScoreboardSession(sessionId: string) {
   }));
 }
 
+// Alias for API compatibility
+export const getLeaderboard = getScoreboardSession;
+
 export function calculerScoreTache(
   tache: 'a' | 'b' | 'c' | 'd' | 'e',
   correct: boolean,

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/cotisation-reminder",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/coach-analysis",
+      "schedule": "0 */6 * * *"
+    }
+  ]
+}
