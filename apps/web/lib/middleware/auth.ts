@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase/server';
+import prisma from '@/lib/prisma';
 
 export interface AuthUser {
   id: string;
@@ -10,34 +11,30 @@ export interface AuthUser {
 }
 
 export async function getAuthUser(request: NextRequest): Promise<AuthUser | null> {
-  const authHeader = request.headers.get('authorization');
-
-  if (!authHeader?.startsWith('Bearer ')) {
-    return null;
-  }
-
-  const token = authHeader.split(' ')[1];
-
   try {
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    const supabase = await createClient();
+    const { data: { user }, error } = await supabase.auth.getUser();
 
     if (error || !user) {
       return null;
     }
 
-    // Get profile data
-    const { data: profile } = await supabaseAdmin
-      .from('users')
-      .select('role, is_mineur, groupe_id')
-      .eq('id', user.id)
-      .single();
+    // Get user profile from database
+    const profile = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { 
+        role: true, 
+        isMineur: true, 
+        groupeId: true 
+      },
+    });
 
     return {
       id: user.id,
       email: user.email!,
-      role: profile?.role ?? 'eleve',
-      isMineur: profile?.is_mineur ?? false,
-      groupeId: profile?.groupe_id ?? undefined,
+      role: profile?.role ?? 'ELEVE',
+      isMineur: profile?.isMineur ?? false,
+      groupeId: profile?.groupeId ?? undefined,
     };
   } catch {
     return null;
