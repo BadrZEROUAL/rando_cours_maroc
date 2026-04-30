@@ -1,16 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { useState, useMemo } from 'react';
+import { createClient } from '@/lib/supabase/client';
 
 type Mode = 'login' | 'register';
 
 export default function LoginPage() {
+  const supabase = useMemo(() => createClient(), []);
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,8 +20,11 @@ export default function LoginPage() {
   const handleLogin = async () => {
     setChargement(true);
     setErreur('');
+    console.log('[v0] Attempting login with email:', email);
+    console.log('[v0] Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      console.log('[v0] Login response:', { data, error });
       if (error) throw error;
       if (data.session) {
         localStorage.setItem('rc_token', data.session.access_token);
@@ -33,6 +32,7 @@ export default function LoginPage() {
         window.location.href = '/eleve';
       }
     } catch (err: any) {
+      console.log('[v0] Login error:', err);
       setErreur(err.message || 'Erreur de connexion');
     } finally {
       setChargement(false);
@@ -40,24 +40,39 @@ export default function LoginPage() {
   };
 
   const handleRegister = async () => {
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setErreur('Veuillez entrer une adresse email valide (ex: nom@exemple.com)');
+      return;
+    }
+    if (password.length < 6) {
+      setErreur('Le mot de passe doit contenir au moins 6 caractères');
+      return;
+    }
     if (isMineur && !parentEmail) {
       setErreur('Email du parent obligatoire pour les mineurs');
       return;
     }
     setChargement(true);
     setErreur('');
+    console.log('[v0] Attempting registration with email:', email);
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
+          emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? 
+            `${window.location.origin}/auth/callback`,
           data: { telephone, isMineur, parentEmail: isMineur ? parentEmail : null },
         },
       });
+      console.log('[v0] Registration response:', { data, error });
       if (error) throw error;
       setMessage('Compte créé ! Vérifie ton email pour confirmer ton inscription.');
       setMode('login');
     } catch (err: any) {
+      console.log('[v0] Registration error:', err);
       setErreur(err.message || 'Erreur lors de la création du compte');
     } finally {
       setChargement(false);

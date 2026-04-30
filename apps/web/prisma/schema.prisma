@@ -1,0 +1,384 @@
+// ============================================================
+// RandoCours Maroc — Schéma Prisma complet
+// Base de données PostgreSQL (Supabase) — me-south-1
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+/// Seed : pnpm db:seed
+/// Pour exécuter : cd packages/db && pnpm ts-node prisma/seed.ts
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+// ── Enums ─────────────────────────────────────────────────────
+enum Role {
+  super_admin
+  admin
+  enseignant
+  eleve
+  jury
+}
+
+enum Langue {
+  fr
+  ar
+  darija
+}
+
+enum TransactionType {
+  CREDIT_DH
+  DEBIT_WALLET
+  CREDIT_COLLECTIF
+  DEBIT_COLLECTIF
+  POOL_COMMISSION
+  POOL_DISTRIBUTION
+  PENALITE_PARTAGE
+  PENALITE_QR
+  BONUS_CORRECT
+  COTISATION
+}
+
+enum SessionStatus {
+  draft
+  configured
+  generated
+  active
+  validation
+  completed
+}
+
+enum Matiere {
+  Maths
+  Physique_Chimie
+  SVT
+  Sciences_Ingenieur
+  Arabe
+  Francais
+  Histoire_Geo
+  Philosophie
+  Education_Islamique
+}
+
+enum Niveau {
+  AC1
+  AC2
+  AC3
+  TC
+  BAC1_SE
+  BAC1_SM
+  BAC2_SP
+  BAC2_SMA
+  BAC2_SVT
+}
+
+// ── TABLE 1 : users ───────────────────────────────────────────
+// Synchronisée avec Supabase Auth (auth.users)
+model User {
+  id                String   @id @default(uuid())
+  email             String   @unique
+  telephone         String?
+  role              Role     @default(eleve)
+  langue            Langue   @default(fr)
+  isMineur          Boolean  @default(false)
+  parentEmail       String?  // Requis si isMineur = true
+  consentementParent Boolean @default(false)
+  estActif          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  wallet            Wallet?
+  groupeMembres     GroupeMembre[]
+  coachGroupe       Groupe[]       @relation("CoachGroupe")
+  badges            Badge[]
+  auditLogsActeur   AuditLog[]     @relation("AuditActeur")
+  auditLogsCible    AuditLog[]     @relation("AuditCible")
+
+  @@map("users")
+}
+
+// ── TABLE 2 : wallets ─────────────────────────────────────────
+model Wallet {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  soldeRc          BigInt   @default(100) // Capital initial 100 RC
+  capitalInvestiDh Decimal  @default(0) @db.Decimal(10, 2)
+  updatedAt        DateTime @updatedAt
+
+  user             User     @relation(fields: [userId], references: [id])
+
+  @@map("wallets")
+}
+
+// ── TABLE 3 : etablissements ──────────────────────────────────
+model Etablissement {
+  id            String   @id @default(uuid())
+  nom           String
+  type          String   // Collège, Lycée
+  ville         String
+  region        String
+  licenceActive Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  groupes       Groupe[]
+
+  @@map("etablissements")
+}
+
+// ── TABLE 4 : groupes ─────────────────────────────────────────
+model Groupe {
+  id               String        @id @default(uuid())
+  nom              String
+  logoEmoji        String        @default("🎒")
+  slogan           String?
+  niveauActuel     Niveau
+  etablissementId  String?
+  coachId          String?
+  createdAt        DateTime      @default(now())
+
+  etablissement    Etablissement? @relation(fields: [etablissementId], references: [id])
+  coach            User?          @relation("CoachGroupe", fields: [coachId], references: [id])
+  membres          GroupeMembre[]
+  compteCollectif  CompteCollectif?
+  cotisations      Cotisation[]
+  sessionGroupes   SessionGroupe[]
+  badges           Badge[]
+
+  @@map("groupes")
+}
+
+// ── TABLE 5 : groupe_membres ──────────────────────────────────
+model GroupeMembre {
+  groupeId  String
+  userId    String
+  joinedAt  DateTime @default(now())
+
+  groupe    Groupe   @relation(fields: [groupeId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@id([groupeId, userId])
+  @@map("groupe_membres")
+}
+
+// ── TABLE 6 : comptes_collectifs ──────────────────────────────
+model CompteCollectif {
+  id       String  @id @default(uuid())
+  groupeId String  @unique
+  soldeRc  BigInt  @default(0)
+  bloque   Boolean @default(false)
+
+  groupe   Groupe  @relation(fields: [groupeId], references: [id])
+
+  @@map("comptes_collectifs")
+}
+
+// ── TABLE 7 : transactions ────────────────────────────────────
+// APPEND ONLY — trigger PostgreSQL empêche UPDATE et DELETE
+model Transaction {
+  id         String          @id @default(uuid())
+  type       TransactionType
+  sourceId   String          // wallet.id ou compte_collectif.id
+  destId     String          // wallet.id ou compte_collectif.id
+  montantRc  BigInt
+  montantDh  Decimal?        @db.Decimal(10, 2)
+  metadata   Json?           // Données additionnelles (sessionId, groupeId...)
+  createdAt  DateTime        @default(now())
+
+  @@map("transactions")
+  @@index([sourceId])
+  @@index([destId])
+  @@index([createdAt])
+}
+
+// ── TABLE 8 : sessions ────────────────────────────────────────
+model Session {
+  id              String        @id @default(uuid())
+  niveau          Niveau
+  matiere         Matiere
+  theme           String
+  difficulte      Int           @default(3) // 1-5 étoiles
+  nbGroupes       Int           @default(3)
+  nbHallucinations Int          @default(1)
+  status          SessionStatus @default(draft)
+  enseignantId    String
+  rcCommission    BigInt        @default(0)
+  messageSecret   String?
+  createdAt       DateTime      @default(now())
+  completedAt     DateTime?
+
+  questions       Question[]
+  qrCodes         QRCode[]
+  sessionGroupes  SessionGroupe[]
+
+  @@map("sessions")
+  @@index([enseignantId])
+  @@index([status])
+}
+
+// ── TABLE 9 : questions ───────────────────────────────────────
+model Question {
+  id              String   @id @default(uuid())
+  sessionId       String
+  stationNum      Int      // 1-5
+  questionNum     Int      // 1-4
+  enonce          String
+  options         Json     // [{num: 1, texte: "..."}, ...]
+  bonneReponse    Int      // 1-9
+  explication     String
+  chapitre        String
+  isHallucination Boolean  @default(false)
+  typeErreurHp    String?
+  createdAt       DateTime @default(now())
+
+  session         Session  @relation(fields: [sessionId], references: [id])
+  reponses        ReponseGroupe[]
+
+  @@map("questions")
+  @@index([sessionId, stationNum])
+}
+
+// ── TABLE 10 : qr_codes ───────────────────────────────────────
+model QRCode {
+  id          String   @id @default(uuid())
+  sessionId   String
+  groupeId    String
+  stationNum  Int
+  lieuNom     String
+  token       String   @unique // JWT signé
+  isUtilise   Boolean  @default(false)
+  utiliseAt   DateTime?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  session     Session  @relation(fields: [sessionId], references: [id])
+
+  @@map("qr_codes")
+  @@index([sessionId, groupeId])
+  @@index([token])
+}
+
+// ── Jonction session × groupe ─────────────────────────────────
+model SessionGroupe {
+  sessionId        String
+  groupeId         String
+  scoreQcm         Int      @default(0)
+  scoreValidation  Int      @default(0)
+  randoCoins       Int      @default(100) // Capital initial
+  parcoursOrdre    Json?    // Ordre des lieux pour ce groupe
+  completedAt      DateTime?
+
+  session          Session  @relation(fields: [sessionId], references: [id])
+  groupe           Groupe   @relation(fields: [groupeId], references: [id])
+  reponses         ReponseGroupe[]
+
+  @@id([sessionId, groupeId])
+  @@map("session_groupes")
+}
+
+// ── Réponses des groupes ──────────────────────────────────────
+model ReponseGroupe {
+  id              String       @id @default(uuid())
+  sessionId       String
+  groupeId        String
+  questionId      String
+  choix           Int          // 1-9
+  essai           Int          @default(1) // 1 ou 2
+  correct         Boolean
+  points          Int
+  rcVariation     Int
+  partageDetecte  Boolean      @default(false)
+  tempsDepuisQs   Int          // ms depuis affichage question
+  createdAt       DateTime     @default(now())
+
+  sessionGroupe   SessionGroupe @relation(fields: [sessionId, groupeId], references: [sessionId, groupeId])
+  question        Question      @relation(fields: [questionId], references: [id])
+
+  @@map("reponses_groupes")
+  @@index([sessionId, groupeId])
+}
+
+// ── TABLE 11 : cotisations ────────────────────────────────────
+model Cotisation {
+  id          String    @id @default(uuid())
+  groupeId    String
+  montantDh   Decimal   @db.Decimal(10, 2) @default(30)
+  dueAt       DateTime
+  paidAt      DateTime?
+  isPaid      Boolean   @default(false)
+  rappelJ7    Boolean   @default(false) // SMS envoyé J-7
+  rappelJ1    Boolean   @default(false) // SMS envoyé J-1
+  bloqueAt    DateTime? // Date de blocage si non payé
+  createdAt   DateTime  @default(now())
+
+  groupe      Groupe    @relation(fields: [groupeId], references: [id])
+
+  @@map("cotisations")
+  @@index([groupeId])
+  @@index([dueAt, isPaid])
+}
+
+// ── TABLE 12 : badges ─────────────────────────────────────────
+model Badge {
+  id                 String   @id @default(uuid())
+  eleveId            String
+  groupeId           String
+  sessionId          String
+  niveau             Int      // 1-5 étoiles
+  matiere            Matiere
+  score              Int
+  scoreMax           Int
+  competencesValidees Json    // ["pensée critique", "coopération"...]
+  pdfUrl             String?  // URL S3
+  badgeJsonUrl       String?  // Open Badge JSON URL
+  issuedOn           DateTime @default(now())
+  revoque            Boolean  @default(false)
+
+  eleve              User     @relation(fields: [eleveId], references: [id])
+  groupe             Groupe   @relation(fields: [groupeId], references: [id])
+
+  @@map("badges")
+  @@index([eleveId])
+}
+
+// ── Coach IA sessions ─────────────────────────────────────────
+model CoachIASession {
+  id                  String   @id @default(uuid())
+  userId              String
+  groupeId            String
+  sessionId           String
+  lacunes             Json     // LacuneIA[]
+  exercices           Json     // ExerciceSocrate[]
+  messageEncouragement String
+  alerteCoachHumain   String?
+  patternCommun       Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  @@map("coach_ia_sessions")
+  @@index([userId])
+  @@index([groupeId])
+}
+
+// ── Audit logs (Loi 09-08 CNDP) ──────────────────────────────
+model AuditLog {
+  id         String   @id @default(uuid())
+  acteurId   String
+  action     String   // "READ_PROFILE", "EXPORT_DATA", etc.
+  cibleType  String   // "user", "wallet", "badge"
+  cibleId    String
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  acteur     User     @relation("AuditActeur", fields: [acteurId], references: [id])
+  cible      User?    @relation("AuditCible", fields: [cibleId], references: [id])
+
+  @@map("audit_logs")
+  @@index([acteurId])
+  @@index([createdAt])
+}
