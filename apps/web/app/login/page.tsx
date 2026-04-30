@@ -1,13 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
-
-const supabase = createClient();
 
 type Mode = 'login' | 'register';
 
 export default function LoginPage() {
+  const supabase = useMemo(() => createClient(), []);
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,8 +20,11 @@ export default function LoginPage() {
   const handleLogin = async () => {
     setChargement(true);
     setErreur('');
+    console.log('[v0] Attempting login with email:', email);
+    console.log('[v0] Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      console.log('[v0] Login response:', { data, error });
       if (error) throw error;
       if (data.session) {
         localStorage.setItem('rc_token', data.session.access_token);
@@ -30,6 +32,7 @@ export default function LoginPage() {
         window.location.href = '/eleve';
       }
     } catch (err: any) {
+      console.log('[v0] Login error:', err);
       setErreur(err.message || 'Erreur de connexion');
     } finally {
       setChargement(false);
