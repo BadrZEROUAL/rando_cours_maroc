@@ -40,12 +40,23 @@ export default function LoginPage() {
   };
 
   const handleRegister = async () => {
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setErreur('Veuillez entrer une adresse email valide (ex: nom@exemple.com)');
+      return;
+    }
+    if (password.length < 6) {
+      setErreur('Le mot de passe doit contenir au moins 6 caractères');
+      return;
+    }
     if (isMineur && !parentEmail) {
       setErreur('Email du parent obligatoire pour les mineurs');
       return;
     }
     setChargement(true);
     setErreur('');
+    console.log('[v0] Attempting registration with email:', email);
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -56,10 +67,12 @@ export default function LoginPage() {
           data: { telephone, isMineur, parentEmail: isMineur ? parentEmail : null },
         },
       });
+      console.log('[v0] Registration response:', { data, error });
       if (error) throw error;
       setMessage('Compte créé ! Vérifie ton email pour confirmer ton inscription.');
       setMode('login');
     } catch (err: any) {
+      console.log('[v0] Registration error:', err);
       setErreur(err.message || 'Erreur lors de la création du compte');
     } finally {
       setChargement(false);
